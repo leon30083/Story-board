@@ -1,41 +1,102 @@
 import React, { useState } from 'react';
 
-export default function Step3Images() {
-  const [images, setImages] = useState([]);
-  const [uploading, setUploading] = useState(false);
+// props: prompts（分镜提示词数组）
+export default function Step3Images({ prompts = [
+  '分镜1提示词示例',
+  '分镜2提示词示例',
+  '分镜3提示词示例'
+] }) {
+  // 每个分镜一张图片，初始为空
+  const [images, setImages] = useState(prompts.map((p, idx) => ({
+    id: idx + 1,
+    prompt: p,
+    url: '',
+    loading: false,
+    error: ''
+  })));
 
-  const handleUpload = e => {
-    setUploading(true);
-    // TODO: 实现图片上传，暂用假数据
-    setTimeout(() => {
-      setImages([...images, { url: 'https://placehold.co/120x80', name: `图片${images.length + 1}` }]);
-      setUploading(false);
-    }, 800);
+  // AI生成全部图片
+  const handleGenerateAll = async () => {
+    setImages(imgs => imgs.map(img => ({ ...img, loading: true, error: '' })));
+    try {
+      const resp = await fetch('/api/generate_images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompts: images.map(img => img.prompt) })
+      });
+      const data = await resp.json();
+      // 假设返回格式 { urls: ['url1', 'url2', ...] }
+      setImages(imgs => imgs.map((img, i) => ({
+        ...img,
+        url: data.urls?.[i] || '',
+        loading: false,
+        error: data.urls?.[i] ? '' : '生成失败'
+      })));
+    } catch (e) {
+      setImages(imgs => imgs.map(img => ({ ...img, loading: false, error: '生成失败' })));
+    }
+  };
+
+  // 重试单张图片
+  const handleRetry = async idx => {
+    setImages(imgs => imgs.map((img, i) => i === idx ? { ...img, loading: true, error: '' } : img));
+    try {
+      const resp = await fetch('/api/generate_images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompts: [images[idx].prompt] })
+      });
+      const data = await resp.json();
+      setImages(imgs => imgs.map((img, i) => i === idx ? {
+        ...img,
+        url: data.urls?.[0] || '',
+        loading: false,
+        error: data.urls?.[0] ? '' : '生成失败'
+      } : img));
+    } catch (e) {
+      setImages(imgs => imgs.map((img, i) => i === idx ? { ...img, loading: false, error: '生成失败' } : img));
+    }
+  };
+
+  // 导出全部图片（简单实现：下载所有图片）
+  const handleExportAll = () => {
+    images.forEach(img => {
+      if (img.url) {
+        const a = document.createElement('a');
+        a.href = img.url;
+        a.download = `分镜${img.id}.jpg`;
+        a.click();
+      }
+    });
   };
 
   return (
-    <div className="flex flex-col md:flex-row gap-6">
-      {/* 左侧上传区 */}
-      <aside className="w-full md:w-1/4 space-y-4">
-        <div className="border rounded h-32 flex items-center justify-center text-gray-400">上传图片</div>
-        <input type="file" accept="image/*" className="w-full" onChange={handleUpload} disabled={uploading} />
-        <div className="mt-2 space-y-2">
-          {images.map((img, idx) => (
-            <div key={idx} className="flex items-center space-x-2">
-              <img src={img.url} alt={img.name} className="w-12 h-8 object-cover rounded" />
-              <span className="text-xs text-gray-600">{img.name}</span>
+    <div className="flex flex-col gap-6">
+      <div className="mb-4 flex justify-between items-center">
+        <span className="font-semibold text-lg">分镜图片生成</span>
+        <div className="flex gap-2">
+          <button className="px-4 py-1 bg-green-500 text-white rounded" onClick={handleGenerateAll}>全部生成</button>
+          <button className="px-4 py-1 bg-blue-500 text-white rounded" onClick={handleExportAll}>导出全部</button>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {images.map((img, idx) => (
+          <div key={img.id} className="border rounded p-4 flex flex-col items-center bg-white shadow">
+            <div className="font-bold mb-2">分镜{img.id}</div>
+            <div className="text-xs text-gray-600 mb-2">提示词：{img.prompt}</div>
+            <div className="w-40 h-28 flex items-center justify-center bg-gray-100 rounded mb-2">
+              {img.loading ? (
+                <span className="text-pink-500">生成中...</span>
+              ) : img.url ? (
+                <img src={img.url} alt={`分镜${img.id}`} className="w-full h-full object-cover rounded" />
+              ) : (
+                <span className="text-gray-400">未生成</span>
+              )}
             </div>
-          ))}
-        </div>
-      </aside>
-      {/* 右侧ComfyUI节点编辑器占位 */}
-      <div className="w-full md:flex-1 mx-4">
-        <div className="h-96 bg-gray-200 flex items-center justify-center text-gray-500 rounded">ComfyUI 节点编辑器（占位）</div>
-        <div className="mt-4 flex space-x-2">
-          <button className="px-4 py-1 bg-green-500 text-white rounded">全部生成</button>
-          <button className="px-4 py-1 bg-gray-200 rounded">重试失败</button>
-          <button className="px-4 py-1 bg-blue-500 text-white rounded">导出全部</button>
-        </div>
+            {img.error && <div className="text-xs text-red-500 mb-2">{img.error}</div>}
+            <button className="px-3 py-1 bg-gray-200 rounded text-sm" onClick={() => handleRetry(idx)} disabled={img.loading}>重试</button>
+          </div>
+        ))}
       </div>
     </div>
   );
