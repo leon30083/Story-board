@@ -25,7 +25,6 @@ function MainFlow() {
   const [script, setScript] = useState({ zh: '', en: '', classic: false });
   const [prompts, setPrompts] = useState(['', '', '']);
   const [images, setImages] = useState([]);
-  // 项目仪表盘弹窗
   const [showDashboard, setShowDashboard] = useState(false);
   // 草稿检测
   useEffect(() => {
@@ -49,6 +48,10 @@ function MainFlow() {
   // 清除草稿
   const handleClearDraft = () => {
     localStorage.removeItem(DRAFT_KEY);
+    setBasicInfo({ theme: '', age: '', style: '', keywords: '' });
+    setScript({ zh: '', en: '', classic: false });
+    setPrompts(['', '', '']);
+    setImages([]);
     alert('草稿已清除！');
   };
   // 选择项目后切换全局数据
@@ -64,20 +67,16 @@ function MainFlow() {
       setPrompts(['', '', '']);
       setImages([]);
     }
-    // 保存到草稿，便于主流程同步
     localStorage.setItem(DRAFT_KEY, JSON.stringify(p.data || { basicInfo: {}, script: {}, prompts: ['', '', ''], images: [] }));
   };
-  // 每次全局数据变更时自动同步到当前项目（如有）
-  useEffect(() => {
-    const projects = JSON.parse(localStorage.getItem('storybook_projects') || '[]');
-    const draft = localStorage.getItem(DRAFT_KEY);
-    if (projects.length && draft) {
-      // 找到当前选中的项目（假设第一个为当前）
-      const currentId = projects[0].id;
-      const newProjects = projects.map((p, i) => i === 0 ? { ...p, data: JSON.parse(draft) } : p);
-      localStorage.setItem('storybook_projects', JSON.stringify(newProjects));
-    }
-  }, [basicInfo, script, prompts, images]);
+  // 步骤切换时主动保存当前Step数据
+  const handleNextStep = (stepData) => {
+    if (currentStep === 0 && stepData) setBasicInfo(stepData);
+    if (currentStep === 1 && stepData) setScript(stepData);
+    if (currentStep === 2 && stepData) setPrompts(stepData);
+    setCurrentStep(s => Math.min(s + 1, steps.length - 1));
+  };
+  const handlePrevStep = () => setCurrentStep(s => Math.max(s - 1, 0));
   return (
     <main className="flex-1 flex justify-center items-start">
       <section className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-2xl mt-8 mb-8 relative">
@@ -100,29 +99,17 @@ function MainFlow() {
         </nav>
         {/* 主流程内容 */}
         <div>
-          {currentStep === 0 ? <Step0BasicInfo value={basicInfo} onChange={setBasicInfo} /> :
-            currentStep === 1 ? <Step1Script prevData={basicInfo} value={script} onChange={setScript} /> :
-            currentStep === 2 ? <Step2Prompts scriptZhList={[script.zh]} value={prompts} onChange={setPrompts} /> :
-            currentStep === 3 ? <Step3Images prompts={prompts} value={images} onChange={setImages} /> :
+          {currentStep === 0 ? <Step0BasicInfo value={basicInfo} onChange={setBasicInfo} onNext={handleNextStep} /> :
+            currentStep === 1 ? <Step1Script prevData={basicInfo} value={script} onChange={setScript} onNext={handleNextStep} onPrev={handlePrevStep} /> :
+            currentStep === 2 ? <Step2Prompts scriptZhList={[script.zh]} value={prompts} onChange={setPrompts} onNext={handleNextStep} onPrev={handlePrevStep} /> :
+            currentStep === 3 ? <Step3Images prompts={prompts} value={images} onChange={setImages} onPrev={handlePrevStep} /> :
             <div className="text-gray-500">未知步骤</div>}
         </div>
-        {/* 底部按钮（卡片内居中） */}
+        {/* 草稿操作按钮，仅保留一组 */}
         <div className="mt-8 flex flex-col items-center gap-2">
           <div className="flex gap-2 mb-2">
             <button className="px-4 py-1 bg-gray-100 rounded text-sm" onClick={handleSaveDraft}>保存草稿</button>
             <button className="px-4 py-1 bg-gray-100 rounded text-sm" onClick={handleClearDraft}>清除草稿</button>
-          </div>
-          <div>
-            {currentStep > 0 && (
-              <button className="px-6 py-2 bg-gray-200 rounded mr-4" onClick={() => setCurrentStep(currentStep - 1)}>返回</button>
-            )}
-            <button
-              className="px-6 py-2 bg-pink-500 text-white rounded"
-              onClick={() => {
-                if (currentStep < steps.length - 1) setCurrentStep(currentStep + 1);
-                else alert('创作流程完成！');
-              }}
-            >{currentStep < steps.length - 1 ? '下一步 →' : '完成'}</button>
           </div>
         </div>
       </section>

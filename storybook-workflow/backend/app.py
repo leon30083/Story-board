@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import os, json
 from openai import OpenAI
+import datetime
 
 app = Flask(__name__)
 
@@ -49,7 +50,8 @@ def load_settings():
             return json.load(f)
     return {
         "api_key": os.environ.get("SILICONFLOW_API_KEY", ""),
-        "prompt_system": PROMPT_SYSTEM
+        "baseurl": "https://api.siliconflow.cn/v1",
+        "model": "deepseek-ai/DeepSeek-V3"
     }
 
 def save_settings(settings):
@@ -64,7 +66,8 @@ def get_settings():
         key = key[:4] + "****" + key[-4:]
     return jsonify({
         "api_key": key,
-        "prompt_system": settings.get("prompt_system", "")
+        "baseurl": settings.get("baseurl", "https://api.siliconflow.cn/v1"),
+        "model": settings.get("model", "deepseek-ai/DeepSeek-V3")
     })
 
 @app.route('/api/settings', methods=['POST'])
@@ -73,10 +76,19 @@ def update_settings():
     settings = load_settings()
     if "api_key" in data:
         settings["api_key"] = data["api_key"]
-    if "prompt_system" in data:
-        settings["prompt_system"] = data["prompt_system"]
+    if "baseurl" in data:
+        settings["baseurl"] = data["baseurl"]
+    if "model" in data:
+        settings["model"] = data["model"]
     save_settings(settings)
     return jsonify({"success": True})
+
+def log_model_communication(level, msg, extra=None):
+    log_path = os.path.join(os.path.dirname(__file__), 'frontend.log')
+    log_line = f"{level} | {msg} | {json.dumps(extra or {}, ensure_ascii=False)}"
+    with open(log_path, 'a', encoding='utf-8') as f:
+        f.write(log_line + "\n")
+    print(log_line)
 
 @app.route('/api/generate_script', methods=['POST'])
 def generate_script():
@@ -95,6 +107,7 @@ def generate_script():
     if classic:
         user_prompt += "请严格按照中国经典故事改编流程生成，保留原作标题和情节节点。\n"
     user_prompt += "每页为一句旁白，先中文后英文。"
+    log_model_communication('info', '大模型请求prompt', {'prompt': user_prompt, 'api': '/api/generate_script'})
     # 调用硅基流动API
     try:
         response = client.chat.completions.create(
@@ -107,6 +120,7 @@ def generate_script():
             max_tokens=1024
         )
         content = response.choices[0].message.content
+        log_model_communication('info', '大模型返回内容', {'response': content, 'api': '/api/generate_script'})
         # 简单分割中英文（如AI输出格式为：每页一行，中文/英文交替）
         zh_lines, en_lines = [], []
         for line in content.split('\n'):
@@ -123,9 +137,10 @@ def generate_script():
                 en_lines.append(line)
         zh = '\n'.join(zh_lines)
         en = '\n'.join(en_lines)
-        return jsonify({'zh': zh, 'en': en})
+        return jsonify({'zh': zh, 'en': en, 'prompt': user_prompt, 'model_response': content})
     except Exception as e:
-        return jsonify({'zh': '', 'en': '', 'error': str(e)}), 500
+        log_model_communication('error', '大模型请求异常', {'error': str(e), 'api': '/api/generate_script'})
+        return jsonify({'zh': '', 'en': '', 'error': str(e), 'prompt': user_prompt}), 500
 
 @app.route('/api/generate_prompts', methods=['POST'])
 def generate_prompts():
@@ -139,6 +154,7 @@ def generate_prompts():
     user_prompt += f"主题：{theme}\n" if theme else ''
     user_prompt += "分镜旁白：\n"
     user_prompt += '\n'.join([f"{i+1}. {s}" for i, s in enumerate(script_list)])
+    log_model_communication('info', '大模型请求prompt', {'prompt': user_prompt, 'api': '/api/generate_prompts'})
     try:
         response = client.chat.completions.create(
             model="deepseek-ai/DeepSeek-V3",
@@ -152,9 +168,23 @@ def generate_prompts():
         )
         import json as pyjson
         prompts = pyjson.loads(response.choices[0].message.content)
-        return jsonify({'prompts': prompts})
+        log_model_communication('info', '大模型返回内容', {'response': response.choices[0].message.content, 'api': '/api/generate_prompts'})
+        return jsonify({'prompts': prompts, 'prompt': user_prompt, 'model_response': response.choices[0].message.content})
     except Exception as e:
-        return jsonify({'prompts': [], 'error': str(e)}), 500
+        log_model_communication('error', '大模型请求异常', {'error': str(e), 'api': '/api/generate_prompts'})
+        return jsonify({'prompts': [], 'error': str(e), 'prompt': user_prompt}), 500
+
+@app.route('/api/log', methods=['POST'])
+def log_frontend():
+    data = request.json
+    level = data.get('level', 'INFO')
+    msg = data.get('msg', '')
+    extra = {k: v for k, v in data.items() if k not in ('level', 'msg')}
+    log_line = f"{level} | {msg} | {json.dumps(extra, ensure_ascii=False)}\n"
+    log_path = os.path.join(os.path.dirname(__file__), 'frontend.log')
+    with open(log_path, 'a', encoding='utf-8') as f:
+        f.write(log_line)
+    return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
     app.run(debug=True) 

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-export default function Step0BasicInfo() {
+export default function Step0BasicInfo({ value = {}, onChange, onNext }) {
   const [styles, setStyles] = useState([]);
   const [form, setForm] = useState({ theme: '', age: '', style: '', keywords: '' });
   const [error, setError] = useState('');
@@ -11,17 +11,29 @@ export default function Step0BasicInfo() {
       .then(data => setStyles(data));
   }, []);
 
+  // 父组件数据变化时同步
+  useEffect(() => {
+    setForm(value || { theme: '', age: '', style: '', keywords: '' });
+  }, [value]);
+
+  // 表单变更同步到父组件
+  const handleChange = (k, v) => {
+    const newForm = { ...form, [k]: v };
+    setForm(newForm);
+    onChange && onChange(newForm);
+  };
+
   return (
     <div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div>
           <label className="block text-sm">主题</label>
           <input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-pink-300 focus:border-pink-400 transition hover:border-pink-400" placeholder="例如：草船借箭"
-            value={form.theme} onChange={e => setForm(f => ({ ...f, theme: e.target.value }))} />
+            value={form.theme} onChange={e => handleChange('theme', e.target.value)} />
         </div>
         <div>
           <label className="block text-sm">适龄段</label>
-          <select className="w-full p-2 border rounded focus:ring-2 focus:ring-pink-300 focus:border-pink-400 transition hover:border-pink-400" value={form.age} onChange={e => setForm(f => ({ ...f, age: e.target.value }))}>
+          <select className="w-full p-2 border rounded focus:ring-2 focus:ring-pink-300 focus:border-pink-400 transition hover:border-pink-400" value={form.age} onChange={e => handleChange('age', e.target.value)}>
             <option value="">请选择</option>
             <option>3-5 岁</option>
             <option>5-8 岁</option>
@@ -30,7 +42,7 @@ export default function Step0BasicInfo() {
         </div>
         <div>
           <label className="block text-sm">故事风格</label>
-          <select className="w-full p-2 border rounded focus:ring-2 focus:ring-pink-300 focus:border-pink-400 transition hover:border-pink-400" value={form.style} onChange={e => setForm(f => ({ ...f, style: e.target.value }))}>
+          <select className="w-full p-2 border rounded focus:ring-2 focus:ring-pink-300 focus:border-pink-400 transition hover:border-pink-400" value={form.style} onChange={e => handleChange('style', e.target.value)}>
             <option value="">请选择</option>
             {styles.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
@@ -38,7 +50,7 @@ export default function Step0BasicInfo() {
         <div className="col-span-1 sm:col-span-2 lg:col-span-3">
           <label className="block text-sm">关键词</label>
           <input type="text" className="w-full p-2 border rounded focus:ring-2 focus:ring-pink-300 focus:border-pink-400 transition hover:border-pink-400" placeholder="例如：勇敢、智慧、合作"
-            value={form.keywords} onChange={e => setForm(f => ({ ...f, keywords: e.target.value }))} />
+            value={form.keywords} onChange={e => handleChange('keywords', e.target.value)} />
         </div>
       </div>
       {/* 可选：风格模板预览 */}
@@ -62,7 +74,7 @@ export default function Step0BasicInfo() {
               return;
             }
             setError('');
-            // TODO: 跳转到下一步或回调
+            onNext && onNext(form);
           }}
         >
           下一步 →
